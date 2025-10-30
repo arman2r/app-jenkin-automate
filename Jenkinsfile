@@ -20,7 +20,6 @@ pipeline {
         stage('Inicio') {
             steps {
                 script {
-                    // Notifica inicio del build
                     currentBuild.description = "Build #${env.BUILD_NUMBER} - Iniciado"
                 }
                 echo '🚀 Iniciando pipeline de deployment...'
@@ -33,9 +32,9 @@ pipeline {
                 checkout scm
                 
                 script {
-                    def gitCommit = bat(returnStdout: true, script: '@git rev-parse --short HEAD').trim()
-                    def gitAuthor = bat(returnStdout: true, script: '@git log -1 --pretty=format:%%an').trim()
-                    def gitMessage = bat(returnStdout: true, script: '@git log -1 --pretty=format:%%s').trim()
+                    def gitCommit = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
+                    def gitAuthor = sh(returnStdout: true, script: 'git log -1 --pretty=format:%an').trim()
+                    def gitMessage = sh(returnStdout: true, script: 'git log -1 --pretty=format:%s').trim()
                     
                     echo "👤 Autor: ${gitAuthor}"
                     echo "📝 Commit: ${gitCommit}"
@@ -49,21 +48,21 @@ pipeline {
         stage('Install Dependencies') {
             steps {
                 echo '📥 Instalando dependencias...'
-                bat 'npm ci'
+                sh 'npm ci'
             }
         }
         
         stage('Lint') {
             steps {
                 echo '🔍 Ejecutando linter...'
-                bat 'npm run lint'
+                sh 'npm run lint'
             }
         }
         
         stage('Build') {
             steps {
                 echo '🔨 Construyendo aplicación Next.js...'
-                bat 'npm run build'
+                sh 'npm run build'
             }
         }
         
@@ -78,10 +77,15 @@ pipeline {
             steps {
                 echo '🛑 Deteniendo instancia anterior...'
                 script {
-                    bat '''
-                        @echo off
-                        FOR /F "tokens=5" %%P IN ('netstat -aon ^| findstr :3000 ^| findstr LISTENING') DO TaskKill /PID %%P /F 2>nul
-                        echo Instancia anterior detenida
+                    sh '''
+                        # Buscar y matar procesos en el puerto 3000
+                        PID=$(lsof -ti:3000) || true
+                        if [ ! -z "$PID" ]; then
+                            kill -9 $PID
+                            echo "Instancia anterior detenida (PID: $PID)"
+                        else
+                            echo "No hay instancia anterior corriendo"
+                        fi
                     '''
                 }
             }
@@ -91,7 +95,12 @@ pipeline {
             steps {
                 echo '🚀 Desplegando aplicación...'
                 script {
-                    bat 'start /B npm run start'
+                    sh '''
+                        # Iniciar la aplicación en segundo plano
+                        nohup npm run start > /var/jenkins_home/workspace/vision-fe/app.log 2>&1 &
+                        echo $! > /var/jenkins_home/workspace/vision-fe/app.pid
+                        echo "Aplicación iniciada con PID: $(cat /var/jenkins_home/workspace/vision-fe/app.pid)"
+                    '''
                     sleep(time: 10, unit: 'SECONDS')
                     echo '✅ Aplicación desplegada en http://localhost:3000'
                 }
@@ -104,10 +113,8 @@ pipeline {
                 script {
                     retry(3) {
                         sleep(time: 2, unit: 'SECONDS')
-                        def response = bat(returnStatus: true, script: 'curl -f http://localhost:3000')
-                        if (response == 0) {
-                            echo '✅ Aplicación respondiendo correctamente'
-                        }
+                        sh 'curl -f http://localhost:3000 || exit 0'
+                        echo '✅ Aplicación respondiendo correctamente'
                     }
                 }
             }
