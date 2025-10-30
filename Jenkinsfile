@@ -96,9 +96,9 @@ pipeline {
                 script {
                     sh '''
                         # Iniciar la aplicación en segundo plano
-                        nohup npm run start > /var/jenkins_home/workspace/front-app/app.log 2>&1 &
-                        echo $! > /var/jenkins_home/workspace/front-app/app.pid
-                        echo "Aplicación iniciada con PID: $(cat /var/jenkins_home/workspace/front-app/app.pid)"
+                        nohup npm run start > /var/jenkins_home/workspace/vision-fe/app.log 2>&1 &
+                        echo $! > /var/jenkins_home/workspace/vision-fe/app.pid
+                        echo "Aplicación iniciada con PID: $(cat /var/jenkins_home/workspace/vision-fe/app.pid)"
                     '''
                     sleep(time: 10, unit: 'SECONDS')
                     echo '✅ Aplicación desplegada en http://localhost:3000'
