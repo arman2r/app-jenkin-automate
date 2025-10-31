@@ -12,21 +12,26 @@ pipeline {
     }
 
     stages {
-        stage('Inicio & Checkout') { // [MODIFICACIÓN 1] Unimos y movemos Checkout a la primera etapa.
+        stage('Inicio & Checkout') {
             steps {
                 script {
-                    // [MODIFICACIÓN] Comentamos la carga de la herramienta NodeJS para evitar fallos de configuración.
-                    // Asegúrate de que Node.js esté disponible en el agente, o reintroduce este paso 
-                    // después de verificar el nombre exacto de la herramienta en 'Manage Jenkins > Tools'.
-                    // def nodeHome = tool name: 'NodeJS 22.x', type: 'jenkins.plugins.nodejs.tools.NodeJSInstallation'
-                    // env.PATH = "${nodeHome}/bin:${env.PATH}"
+                    // [RE-ACTIVACIÓN] Reintroducimos la carga de la herramienta NodeJS para corregir "npm: not found".
+                    // **Asegúrate que el nombre 'NodeJS 22.x' COINCIDA EXACTAMENTE con tu configuración en Manage Jenkins > Tools.**
+                    try {
+                        def nodeHome = tool name: 'NodeJS 22.x', type: 'jenkins.plugins.nodejs.tools.NodeJSInstallation'
+                        env.PATH = "${nodeHome}/bin:${env.PATH}"
+                        echo "NodeJS configurado usando la herramienta: NodeJS 22.x"
+                    } catch (e) {
+                        echo "⚠️ Advertencia: No se pudo cargar la herramienta NodeJS. 'npm ci' podría fallar si Node no está en el PATH del agente."
+                        // Continuamos sin la herramienta, el fallo de 'npm: not found' se producirá en la siguiente etapa.
+                    }
 
                     currentBuild.description = "Build #${env.BUILD_NUMBER} - Iniciado"
                 }
 
                 echo '🚀 Iniciando pipeline de deployment...'
 
-                // Notificar inicio - [MODIFICACIÓN 2] Usamos catchError para ignorar fallos de red.
+                // Notificar inicio - Usamos catchError para ignorar fallos de red.
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     sh """
                         curl -s -X POST -H "Content-Type: application/json" \
@@ -69,7 +74,7 @@ pipeline {
                 echo '🔨 Construyendo aplicación Next.js...'
                 sh 'npm run build'
 
-                // Notificar progreso - [MODIFICACIÓN 2] Usamos catchError para ignorar fallos de red.
+                // Notificar progreso - Usamos catchError para ignorar fallos de red.
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     sh """
                         curl -s -X POST -H "Content-Type: application/json" \
@@ -97,6 +102,7 @@ pipeline {
                         fi
                         
                         # Iniciar nueva aplicación
+                        # NOTA: Asegúrate que el directorio de trabajo tenga los archivos de build de Next.js
                         nohup npm run start > /var/jenkins_home/workspace/vision-fe/app.log 2>&1 &
                         echo $! > /var/jenkins_home/workspace/vision-fe/app.pid
                         echo "Aplicación iniciada con PID: $(cat /var/jenkins_home/workspace/vision-fe/app.pid)"
@@ -135,7 +141,7 @@ pipeline {
                 echo "📅 ${new Date().format('dd/MM/yyyy HH:mm:ss')}"
                 echo '========================================='
 
-                // Notificar éxito - [MODIFICACIÓN 2] Usamos catchError para ignorar fallos de red.
+                // Notificar éxito - Usamos catchError para ignorar fallos de red.
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     sh """
                         curl -s -X POST -H "Content-Type: application/json" \
@@ -161,7 +167,7 @@ pipeline {
                 
                 def failureMessage = "❌ Build fallido en Jenkins. Etapa de fallo: ${currentBuild.result}"
 
-                // Notificar fallo - [MODIFICACIÓN 2] Usamos catchError para ignorar fallos de red.
+                // Notificar fallo - Usamos catchError para ignorar fallos de red.
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     sh """
                         curl -s -X POST -H "Content-Type: application/json" \
