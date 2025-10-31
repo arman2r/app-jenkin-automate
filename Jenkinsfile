@@ -12,7 +12,7 @@ pipeline {
     }
 
     stages {
-        stage('Inicio') {
+        stage('Inicio & Checkout') { // [MODIFICACIÓN 1] Unimos y movemos Checkout a la primera etapa.
             steps {
                 script {
                     // [MODIFICACIÓN] Comentamos la carga de la herramienta NodeJS para evitar fallos de configuración.
@@ -26,24 +26,22 @@ pipeline {
 
                 echo '🚀 Iniciando pipeline de deployment...'
 
-                // Notificar inicio
-                sh """
-                    curl -s -X POST -H "Content-Type: application/json" \
-                    -d '{
-                        "status": "started",
-                        "job": "${env.JOB_NAME}",
-                        "build": "${env.BUILD_NUMBER}",
-                        "timestamp":"${new Date().format('yyyy-MM-dd HH:mm:ss')}",
-                        "message": "🚀 Build iniciado por Jenkins"
-                    }' ${N8N_WEBHOOK}
-                """
-            }
-        }
+                // Notificar inicio - [MODIFICACIÓN 2] Usamos catchError para ignorar fallos de red.
+                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                    sh """
+                        curl -s -X POST -H "Content-Type: application/json" \
+                        -d '{
+                            "status": "started",
+                            "job": "${env.JOB_NAME}",
+                            "build": "${env.BUILD_NUMBER}",
+                            "timestamp":"${new Date().format('yyyy-MM-dd HH:mm:ss')}",
+                            "message": "🚀 Build iniciado por Jenkins"
+                        }' ${N8N_WEBHOOK}
+                    """
+                }
 
-        stage('Checkout') {
-            steps {
                 echo '📦 Clonando repositorio...'
-                checkout scm
+                checkout scm // Checkout explícito
 
                 script {
                     def gitCommit = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
@@ -71,16 +69,18 @@ pipeline {
                 echo '🔨 Construyendo aplicación Next.js...'
                 sh 'npm run build'
 
-                // Notificar progreso
-                sh """
-                    curl -s -X POST -H "Content-Type: application/json" \
-                    -d '{
-                        "status": "progress",
-                        "job": "${env.JOB_NAME}",
-                        "build": "${env.BUILD_NUMBER}",
-                        "message": "⚙️ Build completado. Iniciando despliegue..."
-                    }' ${N8N_WEBHOOK}
-                """
+                // Notificar progreso - [MODIFICACIÓN 2] Usamos catchError para ignorar fallos de red.
+                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                    sh """
+                        curl -s -X POST -H "Content-Type: application/json" \
+                        -d '{
+                            "status": "progress",
+                            "job": "${env.JOB_NAME}",
+                            "build": "${env.BUILD_NUMBER}",
+                            "message": "⚙️ Build completado. Iniciando despliegue..."
+                        }' ${N8N_WEBHOOK}
+                    """
+                }
             }
         }
 
@@ -135,16 +135,18 @@ pipeline {
                 echo "📅 ${new Date().format('dd/MM/yyyy HH:mm:ss')}"
                 echo '========================================='
 
-                // Notificar éxito
-                sh """
-                    curl -s -X POST -H "Content-Type: application/json" \
-                    -d '{
-                        "status": "success",
-                        "job": "${env.JOB_NAME}",
-                        "build": "${env.BUILD_NUMBER}",
-                        "message": "✅ Build #${env.BUILD_NUMBER} completado correctamente en ${duration}"
-                    }' ${N8N_WEBHOOK}
-                """
+                // Notificar éxito - [MODIFICACIÓN 2] Usamos catchError para ignorar fallos de red.
+                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                    sh """
+                        curl -s -X POST -H "Content-Type: application/json" \
+                        -d '{
+                            "status": "success",
+                            "job": "${env.JOB_NAME}",
+                            "build": "${env.BUILD_NUMBER}",
+                            "message": "✅ Build #${env.BUILD_NUMBER} completado correctamente en ${duration}"
+                        }' ${N8N_WEBHOOK}
+                    """
+                }
             }
         }
 
@@ -157,20 +159,21 @@ pipeline {
                 echo "📅 ${new Date().format('dd/MM/yyyy HH:mm:ss')}"
                 echo '========================================='
                 
-                // [MODIFICACIÓN] Usamos un mensaje simple para evitar el error de seguridad de Jenkins.
                 def failureMessage = "❌ Build fallido en Jenkins. Etapa de fallo: ${currentBuild.result}"
 
-                // Notificar fallo
-                sh """
-                    curl -s -X POST -H "Content-Type: application/json" \
-                    -d '{
-                        "status": "failed",
-                        "job": "${env.JOB_NAME}",
-                        "build": "${env.BUILD_NUMBER}",
-                        "message": "${failureMessage}",
-                        "log": "Revisar la consola de Jenkins para más detalles."
-                    }' ${N8N_WEBHOOK}
-                """
+                // Notificar fallo - [MODIFICACIÓN 2] Usamos catchError para ignorar fallos de red.
+                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                    sh """
+                        curl -s -X POST -H "Content-Type: application/json" \
+                        -d '{
+                            "status": "failed",
+                            "job": "${env.JOB_NAME}",
+                            "build": "${env.BUILD_NUMBER}",
+                            "message": "${failureMessage}",
+                            "log": "Revisar la consola de Jenkins para más detalles."
+                        }' ${N8N_WEBHOOK}
+                    """
+                }
             }
         }
 
