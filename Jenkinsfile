@@ -155,9 +155,8 @@ pipeline {
                 echo "📅 ${new Date().format('dd/MM/yyyy HH:mm:ss')}"
                 echo '========================================='
                 
-                // Capturar el log de consola de Jenkins. Esto es más seguro.
-                def consoleLog = currentBuild.rawBuild.getLog(50).join('\n')
-                def sanitizedLog = consoleLog.replaceAll('"', "'").replaceAll("\\r?\\n", " \\n ")
+                // [MODIFICACIÓN] Usamos un mensaje simple para evitar el error de seguridad de Jenkins.
+                def failureMessage = "❌ Build fallido en Jenkins. Etapa de fallo: ${currentBuild.result}"
 
                 // Notificar fallo
                 sh """
@@ -166,8 +165,8 @@ pipeline {
                         "status": "failed",
                         "job": "${env.JOB_NAME}",
                         "build": "${env.BUILD_NUMBER}",
-                        "message": "❌ Build fallido en Jenkins. Error de curl: ${currentBuild.result}",
-                        "log": "${sanitizedLog.length() > 500 ? sanitizedLog.substring(sanitizedLog.length() - 500) : sanitizedLog}"
+                        "message": "${failureMessage}",
+                        "log": "Revisar la consola de Jenkins para más detalles."
                     }' ${N8N_WEBHOOK}
                 """
             }
