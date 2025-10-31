@@ -1,19 +1,20 @@
 pipeline {
     agent any
-    
+
     tools {
         nodejs 'NodeJS 22.x'
     }
-    
+
     environment {
         APP_NAME = 'my-app-nextjs'
         APP_PORT = '3000'
+        N8N_WEBHOOK = 'http://host.docker.internal:5678/webhook/jenkins-events'
     }
-    
+
     triggers {
         pollSCM('H/5 * * * *')
     }
-    
+
     stages {
         stage('Inicio') {
             steps {
@@ -21,81 +22,69 @@ pipeline {
                     currentBuild.description = "Build #${env.BUILD_NUMBER} - Iniciado"
                 }
                 echo '🚀 Iniciando pipeline de deployment...'
+                // Notificar inicio
+                sh """
+                    curl -s -X POST -H "Content-Type: application/json" \
+                    -d '{
+                        "status": "started",
+                        "job": "${env.JOB_NAME}",
+                        "build": "${env.BUILD_NUMBER}",
+                        "message": "🚀 Build iniciado por Jenkins"
+                    }' ${N8N_WEBHOOK}
+                """
             }
         }
-        
+
         stage('Checkout') {
             steps {
                 echo '📦 Clonando repositorio...'
                 checkout scm
-                
+
                 script {
                     def gitCommit = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
                     def gitAuthor = sh(returnStdout: true, script: 'git log -1 --pretty=format:%an').trim()
                     def gitMessage = sh(returnStdout: true, script: 'git log -1 --pretty=format:%s').trim()
-                    
+
                     echo "👤 Autor: ${gitAuthor}"
                     echo "📝 Commit: ${gitCommit}"
                     echo "💬 Mensaje: ${gitMessage}"
-                    
+
                     currentBuild.description = "${gitMessage} (${gitCommit})"
                 }
             }
         }
-        
+
         stage('Install Dependencies') {
             steps {
                 echo '📥 Instalando dependencias...'
                 sh 'npm ci'
             }
         }
-        
-        stage('Lint') {
-            steps {
-                echo '🔍 Linter deshabilitado temporalmente'
-                // Comentado temporalmente debido a problemas de configuración
-                // sh 'npm run lint'
-            }
-        }
-        
+
         stage('Build') {
             steps {
                 echo '🔨 Construyendo aplicación Next.js...'
                 sh 'npm run build'
+
+                // Notificar progreso
+                sh """
+                    curl -s -X POST -H "Content-Type: application/json" \
+                    -d '{
+                        "status": "progress",
+                        "job": "${env.JOB_NAME}",
+                        "build": "${env.BUILD_NUMBER}",
+                        "message": "⚙️ Build completado. Iniciando despliegue..."
+                    }' ${N8N_WEBHOOK}
+                """
             }
         }
-        
-        stage('Test') {
-            steps {
-                echo '🧪 Ejecutando tests...'
-                echo 'No hay tests configurados aún'
-            }
-        }
-        
-        stage('Stop Previous Instance') {
-            steps {
-                echo '🛑 Deteniendo instancia anterior...'
-                script {
-                    sh '''
-                        # Buscar y matar procesos en el puerto 3000
-                        PID=$(lsof -ti:3000) || true
-                        if [ ! -z "$PID" ]; then
-                            kill -9 $PID
-                            echo "Instancia anterior detenida (PID: $PID)"
-                        else
-                            echo "No hay instancia anterior corriendo"
-                        fi
-                    '''
-                }
-            }
-        }
-        
+
         stage('Deploy') {
             steps {
                 echo '🚀 Desplegando aplicación...'
                 script {
                     sh '''
-                        # Iniciar la aplicación en segundo plano
+                        mkdir -p /var/jenkins_home/workspace/vision-fe
                         nohup npm run start > /var/jenkins_home/workspace/vision-fe/app.log 2>&1 &
                         echo $! > /var/jenkins_home/workspace/vision-fe/app.pid
                         echo "Aplicación iniciada con PID: $(cat /var/jenkins_home/workspace/vision-fe/app.pid)"
@@ -105,7 +94,7 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Health Check') {
             steps {
                 echo '❤️ Verificando salud de la aplicación...'
@@ -119,7 +108,7 @@ pipeline {
             }
         }
     }
-    
+
     post {
         success {
             script {
@@ -132,11 +121,20 @@ pipeline {
                 echo "🌐 URL: http://localhost:3000"
                 echo "📅 ${new Date().format('dd/MM/yyyy HH:mm:ss')}"
                 echo '========================================='
-                
-                currentBuild.result = 'SUCCESS'
+
+                // Notificar éxito
+                sh """
+                    curl -s -X POST -H "Content-Type: application/json" \
+                    -d '{
+                        "status": "success",
+                        "job": "${env.JOB_NAME}",
+                        "build": "${env.BUILD_NUMBER}",
+                        "message": "✅ Build #${env.BUILD_NUMBER} completado correctamente en ${duration}"
+                    }' ${N8N_WEBHOOK}
+                """
             }
         }
-        
+
         failure {
             script {
                 echo '========================================='
@@ -145,15 +143,25 @@ pipeline {
                 echo "🔢 Build: #${env.BUILD_NUMBER}"
                 echo "📅 ${new Date().format('dd/MM/yyyy HH:mm:ss')}"
                 echo '========================================='
-                
-                currentBuild.result = 'FAILURE'
+
+                // Captura últimos logs del build
+                def logSnippet = sh(returnStdout: true, script: 'tail -n 20 $WORKSPACE/../*/log || echo "No se pudieron leer los logs"').trim()
+                def sanitizedLog = logSnippet.replaceAll('"', "'").replaceAll("\\r?\\n", " \\n ")
+
+                // Notificar fallo con log
+                sh """
+                    curl -s -X POST -H "Content-Type: application/json" \
+                    -d '{
+                        "status": "failed",
+                        "job": "${env.JOB_NAME}",
+                        "build": "${env.BUILD_NUMBER}",
+                        "message": "❌ Build fallido en Jenkins",
+                        "log": "${sanitizedLog}"
+                    }' ${N8N_WEBHOOK}
+                """
             }
         }
-        
-        unstable {
-            echo '⚠️ Build inestable'
-        }
-        
+
         always {
             echo '🏁 Pipeline finalizado'
             echo "Estado final: ${currentBuild.result}"
