@@ -15,9 +15,11 @@ pipeline {
         stage('Inicio') {
             steps {
                 script {
-                    // Configurar NodeJS manualmente si tools no funciona
-                    def nodeHome = tool name: 'NodeJS 22.x', type: 'jenkins.plugins.nodejs.tools.NodeJSInstallation'
-                    env.PATH = "${nodeHome}/bin:${env.PATH}"
+                    // [MODIFICACIÓN] Comentamos la carga de la herramienta NodeJS para evitar fallos de configuración.
+                    // Asegúrate de que Node.js esté disponible en el agente, o reintroduce este paso 
+                    // después de verificar el nombre exacto de la herramienta en 'Manage Jenkins > Tools'.
+                    // def nodeHome = tool name: 'NodeJS 22.x', type: 'jenkins.plugins.nodejs.tools.NodeJSInstallation'
+                    // env.PATH = "${nodeHome}/bin:${env.PATH}"
 
                     currentBuild.description = "Build #${env.BUILD_NUMBER} - Iniciado"
                 }
