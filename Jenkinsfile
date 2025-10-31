@@ -4,7 +4,7 @@ pipeline {
     environment {
         APP_NAME = 'my-app-nextjs'
         APP_PORT = '3000'
-        N8N_WEBHOOK = 'http://192.168.1.10:5678/webhook/jenkins-events'
+        N8N_WEBHOOK = 'http://192.168.1.10:5678/webhook/jenkins-events' 
     }
 
     triggers {
@@ -87,7 +87,14 @@ pipeline {
                 echo '🚀 Desplegando aplicación...'
                 script {
                     sh '''
-                        mkdir -p /var/jenkins_home/workspace/vision-fe
+                        # Matar proceso anterior si existe
+                        if [ -f /var/jenkins_home/workspace/vision-fe/app.pid ]; then
+                            PID=$(cat /var/jenkins_home/workspace/vision-fe/app.pid)
+                            kill -9 $PID || true
+                            rm /var/jenkins_home/workspace/vision-fe/app.pid
+                        fi
+                        
+                        # Iniciar nueva aplicación
                         nohup npm run start > /var/jenkins_home/workspace/vision-fe/app.log 2>&1 &
                         echo $! > /var/jenkins_home/workspace/vision-fe/app.pid
                         echo "Aplicación iniciada con PID: $(cat /var/jenkins_home/workspace/vision-fe/app.pid)"
@@ -104,7 +111,8 @@ pipeline {
                 script {
                     retry(3) {
                         sleep(time: 2, unit: 'SECONDS')
-                        sh 'curl -f http://localhost:3000 || exit 0'
+                        // Usamos un timeout más corto y un '|| exit 1' para forzar el fallo si no responde
+                        sh 'curl --connect-timeout 5 -f http://localhost:3000 || exit 1' 
                         echo '✅ Aplicación respondiendo correctamente'
                     }
                 }
@@ -119,7 +127,7 @@ pipeline {
                 echo '========================================='
                 echo '✅ DEPLOYMENT EXITOSO'
                 echo '========================================='
-                echo "⏱️  Duración: ${duration}"
+                echo "⏱️  Duración: ${duration}"
                 echo "🔢 Build: #${env.BUILD_NUMBER}"
                 echo "🌐 URL: http://localhost:3000"
                 echo "📅 ${new Date().format('dd/MM/yyyy HH:mm:ss')}"
@@ -146,9 +154,10 @@ pipeline {
                 echo "🔢 Build: #${env.BUILD_NUMBER}"
                 echo "📅 ${new Date().format('dd/MM/yyyy HH:mm:ss')}"
                 echo '========================================='
-
-                def logSnippet = sh(returnStdout: true, script: 'tail -n 20 $WORKSPACE/../*/log || echo "No se pudieron leer los logs"').trim()
-                def sanitizedLog = logSnippet.replaceAll('"', "'").replaceAll("\\r?\\n", " \\n ")
+                
+                // Capturar el log de consola de Jenkins. Esto es más seguro.
+                def consoleLog = currentBuild.rawBuild.getLog(50).join('\n')
+                def sanitizedLog = consoleLog.replaceAll('"', "'").replaceAll("\\r?\\n", " \\n ")
 
                 // Notificar fallo
                 sh """
@@ -157,8 +166,8 @@ pipeline {
                         "status": "failed",
                         "job": "${env.JOB_NAME}",
                         "build": "${env.BUILD_NUMBER}",
-                        "message": "❌ Build fallido en Jenkins",
-                        "log": "${sanitizedLog}"
+                        "message": "❌ Build fallido en Jenkins. Error de curl: ${currentBuild.result}",
+                        "log": "${sanitizedLog.length() > 500 ? sanitizedLog.substring(sanitizedLog.length() - 500) : sanitizedLog}"
                     }' ${N8N_WEBHOOK}
                 """
             }
