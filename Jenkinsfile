@@ -4,7 +4,7 @@ pipeline {
     environment {
         APP_NAME = 'my-app-nextjs'
         APP_PORT = '3000'
-        N8N_WEBHOOK = 'http://host.docker.internal:5678/webhook/jenkins-events'
+        N8N_WEBHOOK = 'http://192.168.1.10:5678/webhook/jenkins-events'
     }
 
     triggers {
